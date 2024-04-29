@@ -1,6 +1,9 @@
+use std::fmt::Error;
 use std::io::{stdin, Read, Stdin};
 use std::process::{Command, Stdio};
 use std::io::Write;
+
+use anyhow::{anyhow, Context};
 
 
 trait CanCauseQuit{
@@ -10,19 +13,20 @@ impl CanCauseQuit for Vec<u8>{
     fn causes_quit(&self)->bool { &self.len() == &1usize && &self.first() == &Some(&113u8) }
 }
 impl CanCauseQuit for String{
-    fn causes_quit(&self)->bool { &self.len() == &1usize && &self[0] == &Some(&113u8) }
+    fn causes_quit(&self)->bool { &self.len() == &1usize && &self.chars().next().expect("Already Checked") == &'q' }
 }
-fn main(){
+fn main()->anyhow::Result<()>{
     
     loop {
-        let mut buffer: String;
-        stdin().read_to_string(&mut buffer);
+        let mut buffer: String = String::new();
+        stdin().read_to_string(&mut buffer).with_context(|| anyhow!("Failed to read input. Terminating."))?;
         if buffer.causes_quit(){
             break;
         }
         println!("{buffer:?}");
     }
     println!("Exiting");
+    anyhow::Ok(())
 
 }
 
