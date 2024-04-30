@@ -1,10 +1,9 @@
-use std::fmt::Error;
-use std::io::{stdin, Read, Stdin};
+use std::io::{stdin, stdout, Read, Stdin, Stdout};
 use std::process::{Command, Stdio};
 use std::io::Write;
-
+use crossterm::terminal::{enable_raw_mode,disable_raw_mode};
+use crossterm::event::{read,Event, KeyCode, KeyEvent, KeyEventKind};
 use anyhow::{anyhow, Context};
-
 
 trait CanCauseQuit{
     fn causes_quit(&self)->bool;
@@ -15,16 +14,56 @@ impl CanCauseQuit for Vec<u8>{
 impl CanCauseQuit for String{
     fn causes_quit(&self)->bool { &self.len() == &1usize && &self.chars().next().expect("Already Checked") == &'q' }
 }
-fn main()->anyhow::Result<()>{
-    
-    loop {
-        let mut buffer: String = String::new();
-        stdin().read_to_string(&mut buffer).with_context(|| anyhow!("Failed to read input. Terminating."))?;
-        if buffer.causes_quit(){
-            break;
-        }
-        println!("{buffer:?}");
+
+struct KeyPressCode{
+    code: KeyCode
+}
+impl From<KeyCode> for KeyPressCode{
+    fn from(code: KeyCode) -> Self {
+        Self{code}
     }
+}
+impl TryFrom<&Event> for KeyPressCode{
+    type Error = anyhow::Error;
+
+    fn try_from(event: &Event) -> Result<Self, Self::Error> {
+        if let Event::Key(k) = event{
+            if let KeyEventKind::Press = k.kind{
+                return Ok(KeyPressCode::from(k.code));
+            }
+        };
+        return Err(anyhow!("not a \"keypress\""))
+    }
+}
+
+
+struct Editor{
+
+}
+impl Editor{
+    fn new()->Self{
+        Self{}
+    }
+    fn run(self)->anyhow::Result<()>{
+        'outer: loop {
+            let event = read().with_context(|| anyhow!("Failed to get event"))?;
+            if let Ok(keypress) = KeyPressCode::try_from(&event){
+                let c = keypress.code;
+                println!("{c:?}");
+                if c == KeyCode::Char('q'){
+                    break 'outer;
+                }
+            }
+        }
+        anyhow::Ok(())
+
+    }
+}
+
+fn main()->anyhow::Result<()>{
+    println!("Starting...");
+    let editor = Editor::new();
+    editor.run().expect("We allow crashing at the upper level!");
     println!("Exiting");
     anyhow::Ok(())
 

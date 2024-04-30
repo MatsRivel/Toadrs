@@ -160,11 +160,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3c5e1a9a646d36c3599cd173a41282daf47c44583ad367b8e6837255952e5c67"
 
 [[package]]
+name = "sys"
+version = "0.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "44114ab7423bd23c8a0f68dca7686a0365559bdf28c17112820b596a7f1d7627"
+
+[[package]]
 name = "text_ed"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "crossterm",
+ "sys",
 ]
 
 [[package]]
