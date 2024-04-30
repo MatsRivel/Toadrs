@@ -1,40 +1,141 @@
-use std::io::{stdin, stdout, Read, Stdin, Stdout};
+use std::fmt::Display;
+use std::io::{self, stdin, stdout, BufRead, Read, Stdin, StdinLock, Stdout};
 use std::process::{Command, Stdio};
 use std::io::Write;
 use crossterm::terminal::{enable_raw_mode,disable_raw_mode};
-use crossterm::event::{read,Event, KeyCode, KeyEvent, KeyEventKind};
+use crossterm::event::{self, read, Event, KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
 use anyhow::{anyhow, Context};
 
-trait CanCauseQuit{
-    fn causes_quit(&self)->bool;
+struct KeyEventWrapper{
+    key_event: KeyEvent
 }
-impl CanCauseQuit for Vec<u8>{
-    fn causes_quit(&self)->bool { &self.len() == &1usize && &self.first() == &Some(&113u8) }
-}
-impl CanCauseQuit for String{
-    fn causes_quit(&self)->bool { &self.len() == &1usize && &self.chars().next().expect("Already Checked") == &'q' }
-}
+impl Display for KeyEventWrapper{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let code = match self.get_code(){
+            KeyCode::Backspace => "<Backspace>",
+            KeyCode::Enter => "<Enter>",
+            KeyCode::Left => "<Left>",
+            KeyCode::Right => "<Right>",
+            KeyCode::Up => "<Up>",
+            KeyCode::Down => "<Down>",
+            KeyCode::Home => "<home>",
+            KeyCode::End => "<End>",
+            KeyCode::PageUp => "<PageUp>",
+            KeyCode::PageDown => "<PageDown>",
+            KeyCode::Tab => "<Tab>",
+            KeyCode::BackTab => "<BackTab>",
+            KeyCode::Delete => "<Delete>",
+            KeyCode::Insert => "<insert>",
+            KeyCode::F(f) => format!("<f{f}>").as_str(),
+            KeyCode::Char(c) => format!("<{c}>").as_str(),
+            KeyCode::Null => "<>",
+            KeyCode::Esc => "<Esc>",
+            KeyCode::CapsLock => "<CapsLock>",
+            KeyCode::ScrollLock => "<ScrollLock>",
+            KeyCode::NumLock => "<NumLock>",
+            KeyCode::PrintScreen => "<PrintScreen>",
+            KeyCode::Pause => "<Pause>",
+            KeyCode::Menu => "<menu>",
+            KeyCode::KeypadBegin => "<KeypadBegin>",
+            KeyCode::Media(media) => {
+                let media_str = match media{
+                    event::MediaKeyCode::Play => "Play",
+                    event::MediaKeyCode::Pause => "Pause",
+                    event::MediaKeyCode::PlayPause => "PlayPause",
+                    event::MediaKeyCode::Reverse => "Reverse",
+                    event::MediaKeyCode::Stop => "Stop",
+                    event::MediaKeyCode::FastForward => "FastForward",
+                    event::MediaKeyCode::Rewind => "Rewind",
+                    event::MediaKeyCode::TrackNext => "TrackNext",
+                    event::MediaKeyCode::TrackPrevious => "TrackPrevious",
+                    event::MediaKeyCode::Record => "Record",
+                    event::MediaKeyCode::LowerVolume => "LowerVolume",
+                    event::MediaKeyCode::RaiseVolume => "RaiseVolume",
+                    event::MediaKeyCode::MuteVolume => "MuteVolume",
+                };
+                format!("<Media:{media_str}>").as_str()},
 
-struct KeyPressCode{
-    code: KeyCode
-}
-impl From<KeyCode> for KeyPressCode{
-    fn from(code: KeyCode) -> Self {
-        Self{code}
-    }
-}
-impl TryFrom<&Event> for KeyPressCode{
-    type Error = anyhow::Error;
-
-    fn try_from(event: &Event) -> Result<Self, Self::Error> {
-        if let Event::Key(k) = event{
-            if let KeyEventKind::Press = k.kind{
-                return Ok(KeyPressCode::from(k.code));
-            }
+            KeyCode::Modifier(modifier) => {
+                let modifier_str = match modifier{
+                    event::ModifierKeyCode::LeftShift => "LeftShift",
+                    event::ModifierKeyCode::LeftControl => "LeftCtrl",
+                    event::ModifierKeyCode::LeftAlt => "LeftAlt",
+                    event::ModifierKeyCode::LeftSuper => "LeftSuper",
+                    event::ModifierKeyCode::LeftHyper => "LeftHyper",
+                    event::ModifierKeyCode::LeftMeta => "LeftMeta",
+                    event::ModifierKeyCode::RightShift => "RightShift",
+                    event::ModifierKeyCode::RightControl => "RightCtrl",
+                    event::ModifierKeyCode::RightAlt => "RightAlt",
+                    event::ModifierKeyCode::RightSuper => "RightSuper",
+                    event::ModifierKeyCode::RightHyper => "RightHyper",
+                    event::ModifierKeyCode::RightMeta => "rightMeta",
+                    event::ModifierKeyCode::IsoLevel3Shift => "IsoLevel3Shift",
+                    event::ModifierKeyCode::IsoLevel5Shift => "IsoLevel5Shift",
+                };
+                format!("<Modifier{modifier_str})>").as_str()},
         };
-        return Err(anyhow!("not a \"keypress\""))
+        let kind = self.get_kind();
+        let modi = self.get_modifiers();
+        let stat = self.get_state();
+        write!(f,"{code}")
     }
 }
+impl KeyEventWrapper{
+    fn get_code(self)->KeyCode{
+        self.key_event.code
+    }
+    fn get_modifiers(self)->KeyModifiers{
+        self.key_event.modifiers
+    }
+    fn get_kind(self)->KeyEventKind{
+        self.key_event.kind
+    }
+    fn get_state(self)->KeyEventState{
+        self.key_event.state
+    }
+    fn is_quit(self)->bool{
+        self.get_code() == KeyCode::Char('q')
+    }
+}
+impl From<KeyEvent>for KeyEventWrapper{
+    fn from(key_event: KeyEvent) -> Self {
+        Self{key_event}
+    }
+}
+impl TryFrom<Event> for KeyEventWrapper{
+    type Error= anyhow::Error;
+
+    fn try_from(event: Event) -> Result<Self, Self::Error> {
+        if let Event::Key(valid_key_event) = event{
+                Ok(KeyEventWrapper::from(valid_key_event))
+        }else{
+            Err(anyhow!("Not a key event"))
+        }
+    }
+}
+
+
+// struct KeyPressCode{
+//     code: KeyCode
+// }
+// impl From<KeyCode> for KeyPressCode{
+//     fn from(code: KeyCode) -> Self {
+//         Self{code}
+//     }
+// }
+// impl From<KeyEventWrapper> for KeyPressCode{
+//     fn from(kew: KeyEventWrapper) -> Self {
+//         Self{code: kew.get_code()}
+//     }
+// }
+// impl TryFrom<Event> for KeyPressCode{
+//     type Error = anyhow::Error;
+
+//     fn try_from(event: Event) -> Result<Self, Self::Error> {
+//         let key_event_wrapper = KeyEventWrapper::try_from(event).with_context(||anyhow!("Could not extract KeyEvent from Event"))?;
+//         Ok(KeyPressCode::from(key_event_wrapper))
+//     }
+// }
 
 
 struct Editor{
@@ -44,19 +145,21 @@ impl Editor{
     fn new()->Self{
         Self{}
     }
-    fn run(self)->anyhow::Result<()>{
+    fn run(&self)->anyhow::Result<()>{
         'outer: loop {
-            let event = read().with_context(|| anyhow!("Failed to get event"))?;
-            if let Ok(keypress) = KeyPressCode::try_from(&event){
-                let c = keypress.code;
-                println!("{c:?}");
-                if c == KeyCode::Char('q'){
-                    break 'outer;
-                }
+            let key_event = self.read_key()?;
+            if key_event.is_quit(){
+                break;
             }
+            
         }
         anyhow::Ok(())
-
+    }
+    fn read_key(&self)->anyhow::Result<KeyEventWrapper>{
+        let event = read()?;
+        KeyEventWrapper::try_from(event) 
+        
+        
     }
 }
 
@@ -72,22 +175,4 @@ fn main()->anyhow::Result<()>{
 #[cfg(test)]
 mod tests{
     use super::*;
-    
-    #[test]
-    fn quit_negative(){
-        let mut buffer_group = vec![];
-        let strings_to_convert = vec!["quitting","hello","a",""];
-        for s in strings_to_convert{
-            buffer_group.push(s.as_bytes().to_vec())
-        }
-        for buffer in buffer_group{
-            assert!(!buffer.causes_quit(),"{buffer:?} should not cause quittin!")
-        }
-    }
-    #[test]
-    fn quit_postive(){
-        let buffer = "q".as_bytes().to_vec();
-        assert!(buffer.causes_quit(),"{buffer:?} should not cause quittin!")
-
-    }
 }
